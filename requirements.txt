@@ -1,0 +1,26 @@
+# --- core data ---
+pandas==3.0.5
+duckdb==1.5.5
+pyarrow==25.0.0
+
+# --- web ingestion ---
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.4.0
+playwright==1.62.0          # for JS-rendered pages; run: playwright install chromium
+
+# --- notebooks ---
+jupyterlab==4.4.3
+ipykernel==6.29.5
+
+# --- viz / social export ---
+matplotlib==3.10.3
+Pillow==12.3.0               # chart rendering (Pillow-based pipeline)
+geopandas==1.0.1             # choropleth maps (optional, only if mapping)
+
+# --- data packaging ---
+openpyxl==3.1.5              # Excel export for sellable datasets
+
+# --- config & utilities ---
+pyyaml==6.0.2
+python-dotenv==1.1.1

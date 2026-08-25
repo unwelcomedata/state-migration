@@ -1,0 +1,36 @@
+project_name: "state-migration"
+
+paths:
+  data_raw:       data/raw        # downloaded source files, never modified
+  data_interim:   data/interim    # intermediate cleaned/joined tables
+  data_processed: data/processed  # final analysis-ready tables
+  export:         export          # sellable dataset packages (csv, xlsx, parquet)
+  outputs:        outputs         # chart images (exploratory)
+  outputs_social: outputs/social  # publication-ready social media charts
+  notebooks:      notebooks
+
+settings:
+  encoding: utf-8
+  parquet_engine: pyarrow
+  duckdb_file: data/project.duckdb   # single file DB for the project
+
+sources:
+  # Define each data source here before ingesting.
+  # url:        full URL to fetch
+  # type:       html_table | html_scrape | csv | json
+  # table_index: (html_table only) zero-based index of the target <table>
+  # js_render:  true if the page requires Playwright (JS-rendered)
+  # Example:
+  # fatalities:
+  #   url: https://example.gov/data/fatalities
+  #   type: html_table
+  #   table_index: 0
+  #   js_render: false
+
+export:
+  formats:
+    - csv
+    - xlsx
+    - parquet
+  include_codebook: true       # generate a column-description markdown alongside each export
+  strip_pii_columns: []        # list column names to drop before packaging

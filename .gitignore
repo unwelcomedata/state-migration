@@ -1,0 +1,71 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+# Strip notebook outputs before committing (keeps diffs clean and removes
+# any data values that could appear in cell outputs).
+# Run: jupyter nbconvert --clear-output --inplace notebooks/*.ipynb
+
+# ── Data files — NEVER commit raw, interim, processed, or export data ─────────
+data/raw/*
+data/interim/*
+data/processed/*
+data/project.duckdb
+data/project.duckdb.wal
+export/*
+
+# Keep the directory structure in git
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!export/.gitkeep
+
+# ── Output images ─────────────────────────────────────────────────────────────
+# Social chart PNGs can reveal your data before you're ready to publish.
+outputs/*
+!outputs/.gitkeep
+!outputs/social/
+outputs/social/*
+!outputs/social/.gitkeep
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── macOS metadata ────────────────────────────────────────────────────────────
+# These embed your username and local paths — strip them.
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Logs & temp ───────────────────────────────────────────────────────────────
+*.log
+tmp/
+temp/
+
+# ── Artifacts (dev-only docs, not committed) ──────────────────────────────────
+# Project status, plans, analysis findings, data pull guides, social posts, etc.
+# These assist development but are not part of the published dataset.
+artifacts/
+!artifacts/.gitkeep
