@@ -13,19 +13,84 @@ settings:
   encoding: utf-8
   parquet_engine: pyarrow
   duckdb_file: data/project.duckdb   # single file DB for the project
+  rate_limit_seconds: 1.5            # polite delay between HTTP requests
 
 sources:
-  # Define each data source here before ingesting.
-  # url:        full URL to fetch
-  # type:       html_table | html_scrape | csv | json
-  # table_index: (html_table only) zero-based index of the target <table>
-  # js_render:  true if the page requires Playwright (JS-rendered)
-  # Example:
-  # fatalities:
-  #   url: https://example.gov/data/fatalities
+  # IRS SOI State-to-State Migration Data (2011–2023)
+  # URL pattern: https://www.irs.gov/pub/irs-soi/state{direction}{YYNN}.csv
+  # direction: "outflow" or "inflow"
+  # YYNN: two-digit year pair, e.g. "2223" for 2022-to-2023
+  #
+  # Columns (outflow): y1_statefips, y2_statefips, y2_state, y2_state_name, n1, n2, AGI
+  # Columns (inflow):  y2_statefips, y1_statefips, y1_state, y1_state_name, n1, n2, AGI
+  #   n1 = number of returns (≈ households)
+  #   n2 = number of exemptions (≈ individuals)
+  #   AGI = adjusted gross income (in thousands of dollars)
+
+  irs_soi_migration:
+    base_url: "https://www.irs.gov/pub/irs-soi"
+    type: csv
+    years:
+      - "1112"   # 2011-2012
+      - "1213"   # 2012-2013
+      - "1314"   # 2013-2014
+      - "1415"   # 2014-2015
+      - "1516"   # 2015-2016
+      - "1617"   # 2016-2017
+      - "1718"   # 2017-2018
+      - "1819"   # 2018-2019
+      - "1920"   # 2019-2020
+      - "2021"   # 2020-2021
+      - "2122"   # 2021-2022
+      - "2223"   # 2022-2023
+    directions:
+      - outflow
+      - inflow
+    filename_pattern: "state{direction}{year}.csv"
+
+  # Tax Foundation — state tax burden rankings (supplemental, later phase)
+  # tax_foundation:
+  #   url: https://taxfoundation.org/data/all/state/...
   #   type: html_table
-  #   table_index: 0
   #   js_render: false
+
+  # Census ACS State-to-State Migration Flows (2011–2024)
+  # Source: https://www.census.gov/data/tables/time-series/demo/geographic-mobility/state-to-state-migration.html
+  # Wide crosstab format: each row = origin state, columns = destination states
+  # Includes estimate + margin of error for each flow
+  # NOTE: 2020 not available (ACS 1-year suspended due to COVID)
+  census_acs_migration:
+    base_url: "https://www2.census.gov/programs-surveys/demo/tables/geographic-mobility"
+    type: xlsx
+    years:
+      - year: 2011
+        filename: "state_to_state_migrations_table_2011.xls"
+      - year: 2012
+        filename: "state_to_state_migrations_table_2012.xls"
+      - year: 2013
+        filename: "state_to_state_migrations_table_2013.xls"
+      - year: 2014
+        filename: "State_to_State_Migrations_Table_2014.xls"
+      - year: 2015
+        filename: "State_to_State_Migrations_Table_2015.xls"
+      - year: 2016
+        filename: "State_to_State_Migrations_Table_2016.xls"
+      - year: 2017
+        filename: "State_to_State_Migrations_Table_2017.xls"
+      - year: 2018
+        filename: "State_to_State_Migrations_Table_2018.xls"
+      - year: 2019
+        filename: "State_to_State_Migrations_Table_2019.xls"
+      # 2020: not available (ACS 1-year suspended due to COVID)
+      - year: 2021
+        filename: "State_to_State_Migrations_Table_2021.xls"
+      - year: 2022
+        filename: "State_to_State_Migration_Table_2022_T13.xlsx"
+      - year: 2023
+        filename: "State_to_State_Migration_Table_2023_T13.xlsx"
+      - year: 2024
+        filename: "State_to_State_Migration_Table_2024_T13.xlsx"
+    url_pattern: "{base_url}/{year}/state-to-state-migration/{filename}"
 
 export:
   formats:
@@ -33,4 +98,4 @@ export:
     - xlsx
     - parquet
   include_codebook: true       # generate a column-description markdown alongside each export
-  strip_pii_columns: []        # list column names to drop before packaging
+  strip_pii_columns: []        # no PII in this dataset

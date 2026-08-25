@@ -1,12 +1,11 @@
-"""Web ingestion utilities.
+"""Web ingestion utilities for state-migration project.
 
-Handles three source types:
-  - html_table  : pandas read_html on a static page
-  - html_scrape : BeautifulSoup for custom element extraction
-  - csv / json  : direct download and save to data/raw
+Primary source: IRS SOI State-to-State Migration Data (2011–2023)
+  - Downloads inflow and outflow CSVs for each year pair
+  - Saves raw files to data/raw/ unchanged
 
-All raw files land in data/raw unchanged. Call load_config() once per notebook
-to get paths and source definitions from config.yaml.
+Also includes generic helpers for html_table, html_scrape, csv, json
+sources defined in config.yaml.
 """
 
 from __future__ import annotations
@@ -304,3 +303,318 @@ def ingest_source(
         return parse_html_scrape(html, row_selector, field_map)
 
     raise ValueError(f"Unknown source type '{source_type}'. Use: html_table, html_scrape, csv, json.")
+
+
+# ---------------------------------------------------------------------------
+# IRS SOI Migration Data — bulk download
+# ---------------------------------------------------------------------------
+
+def ingest_irs_soi_migration(
+    cfg: dict,
+    years: list[str] | None = None,
+    directions: list[str] | None = None,
+    skip_existing: bool = True,
+) -> dict[str, Path]:
+    """Download IRS SOI state-to-state migration CSVs.
+
+    Reads the `irs_soi_migration` source block from config.yaml and downloads
+    all year × direction combinations to data/raw/.
+
+    Args:
+        cfg:            Loaded config dict.
+        years:          Override list of year codes (e.g. ["2122", "2223"]).
+                        If None, uses all years from config.
+        directions:     Override list of directions (["inflow", "outflow"]).
+                        If None, uses both from config.
+        skip_existing:  If True, skip files that already exist in data/raw/.
+
+    Returns:
+        Dict mapping filename → Path for all downloaded files.
+    """
+    source = cfg["sources"]["irs_soi_migration"]
+    base_url = source["base_url"]
+    year_list = years or source["years"]
+    direction_list = directions or source["directions"]
+    pattern = source["filename_pattern"]
+    rate_limit = cfg["settings"].get("rate_limit_seconds", 1.5)
+
+    downloaded: dict[str, Path] = {}
+
+    total = len(year_list) * len(direction_list)
+    count = 0
+
+    for year in year_list:
+        for direction in direction_list:
+            filename = pattern.format(direction=direction, year=year)
+            url = f"{base_url}/{filename}"
+            dest = raw_path(cfg, filename)
+            count += 1
+
+            if skip_existing and dest.exists():
+                print(f"  [{count}/{total}] skip (exists): {filename}")
+                downloaded[filename] = dest
+                continue
+
+            print(f"  [{count}/{total}] downloading: {filename}")
+            try:
+                download_file(url, dest, timeout=60)
+                downloaded[filename] = dest
+            except requests.HTTPError as e:
+                print(f"  ⚠ FAILED {filename}: {e}")
+                continue
+
+            # Polite rate limit
+            if count < total:
+                time.sleep(rate_limit)
+
+    print(f"\n✓ Downloaded {len(downloaded)}/{total} files to {cfg['paths']['data_raw']}/")
+    return downloaded
+
+
+def verify_raw_files(cfg: dict) -> pd.DataFrame:
+    """List all raw CSVs with row counts and file sizes for quick verification.
+
+    Returns a DataFrame summarizing what's in data/raw/.
+    """
+    raw_dir = Path(cfg["paths"]["data_raw"])
+    records = []
+    for f in sorted(raw_dir.glob("state*.csv")):
+        # Quick row count without loading full DataFrame
+        with open(f) as fh:
+            row_count = sum(1 for _ in fh) - 1  # subtract header
+        records.append({
+            "filename": f.name,
+            "rows": row_count,
+            "size_kb": round(f.stat().st_size / 1024, 1),
+        })
+    return pd.DataFrame(records)
+
+
+# ---------------------------------------------------------------------------
+# Census ACS State-to-State Migration Flows — bulk download
+# ---------------------------------------------------------------------------
+
+def ingest_census_acs_migration(
+    cfg: dict,
+    years: list[int] | None = None,
+    skip_existing: bool = True,
+) -> dict[str, Path]:
+    """Download Census ACS state-to-state migration Excel files.
+
+    Reads the `census_acs_migration` source block from config.yaml and downloads
+    all available year files to data/raw/.
+
+    Args:
+        cfg:            Loaded config dict.
+        years:          Override list of years (e.g. [2022, 2023]).
+                        If None, uses all years from config.
+        skip_existing:  If True, skip files that already exist in data/raw/.
+
+    Returns:
+        Dict mapping filename → Path for all downloaded files.
+    """
+    source = cfg["sources"]["census_acs_migration"]
+    base_url = source["base_url"]
+    url_pattern = source["url_pattern"]
+    year_entries = source["years"]
+    rate_limit = cfg["settings"].get("rate_limit_seconds", 1.5)
+
+    if years:
+        year_entries = [e for e in year_entries if e["year"] in years]
+
+    downloaded: dict[str, Path] = {}
+    total = len(year_entries)
+
+    for i, entry in enumerate(year_entries, 1):
+        year = entry["year"]
+        filename = entry["filename"]
+        url = url_pattern.format(base_url=base_url, year=year, filename=filename)
+
+        # Save with a consistent naming scheme
+        local_filename = f"census_acs_migration_{year}.{'xlsx' if filename.endswith('.xlsx') else 'xls'}"
+        dest = raw_path(cfg, local_filename)
+
+        if skip_existing and dest.exists():
+            print(f"  [{i}/{total}] skip (exists): {local_filename}")
+            downloaded[local_filename] = dest
+            continue
+
+        print(f"  [{i}/{total}] downloading: {local_filename} ({year})")
+        try:
+            download_file(url, dest, timeout=60)
+            downloaded[local_filename] = dest
+        except requests.HTTPError as e:
+            print(f"  ⚠ FAILED {local_filename}: {e}")
+            continue
+
+        if i < total:
+            time.sleep(rate_limit)
+
+    print(f"\n✓ Downloaded {len(downloaded)}/{total} Census ACS files to {cfg['paths']['data_raw']}/")
+    return downloaded
+
+
+def parse_census_acs_migration(filepath: Path, year: int) -> pd.DataFrame:
+    """Parse a Census ACS state-to-state migration Excel file into long format.
+
+    Handles two layouts:
+      - Wide crosstab (2011–2023): rows = current residence, columns = previous residence
+      - Long format (2024+): columns = current residence, previous residence, estimate, MOE
+
+    Args:
+        filepath:  Path to the downloaded .xls/.xlsx file.
+        year:      The ACS year for labeling.
+
+    Returns:
+        DataFrame with columns: origin, destination, migrants, moe, year
+    """
+    engine = "openpyxl" if str(filepath).endswith(".xlsx") else "xlrd"
+
+    # Read with no header to inspect structure
+    df_raw = pd.read_excel(filepath, sheet_name=0, header=None, engine=engine)
+
+    # Detect format: long format has "Residence 1 year ago" in header area
+    is_long_format = False
+    for idx in range(min(8, len(df_raw))):
+        row_text = " ".join(str(v) for v in df_raw.iloc[idx] if pd.notna(v))
+        if "Residence 1 year ago" in row_text:
+            is_long_format = True
+            break
+
+    if is_long_format:
+        return _parse_census_long_format(df_raw, year)
+    else:
+        return _parse_census_wide_format(df_raw, filepath, year)
+
+
+def _parse_census_long_format(df_raw: pd.DataFrame, year: int) -> pd.DataFrame:
+    """Parse the 2024+ long format: current residence, previous residence, estimate, MOE."""
+    # Find header row (contains "Estimate")
+    header_row = None
+    for idx in range(min(10, len(df_raw))):
+        row_vals = df_raw.iloc[idx].astype(str)
+        if row_vals.str.contains("Estimate", case=False).any():
+            header_row = idx
+            break
+
+    if header_row is None:
+        raise ValueError("Could not find header row with 'Estimate' in long-format file")
+
+    # Data starts on the row after header
+    data_start = header_row + 1
+
+    records = []
+    for row_idx in range(data_start, len(df_raw)):
+        destination = str(df_raw.iloc[row_idx, 0]).strip()  # Current residence
+        origin = str(df_raw.iloc[row_idx, 1]).strip()       # Residence 1 year ago
+
+        if destination in ("nan", "") or origin in ("nan", ""):
+            continue
+        if destination.startswith("Source:") or destination.startswith("Note"):
+            break
+
+        # Estimate is column 2, MOE is column 3
+        est_val = df_raw.iloc[row_idx, 2]
+        moe_val = df_raw.iloc[row_idx, 3] if len(df_raw.columns) > 3 else None
+
+        # Skip non-numeric (X means suppressed)
+        try:
+            est = int(float(est_val)) if pd.notna(est_val) and str(est_val).strip() not in ("", "nan", "N", "-", "X") else None
+        except (ValueError, TypeError):
+            est = None
+
+        try:
+            moe = int(float(moe_val)) if pd.notna(moe_val) and str(moe_val).strip() not in ("", "nan", "N", "-", "X") else None
+        except (ValueError, TypeError):
+            moe = None
+
+        if est is not None:
+            # Clean footnote markers from names
+            destination_clean = destination.rstrip("0123456789")
+            origin_clean = origin.rstrip("0123456789")
+            records.append({
+                "origin": origin_clean,
+                "destination": destination_clean,
+                "migrants": est,
+                "moe": moe,
+                "year": year,
+            })
+
+    return pd.DataFrame(records)
+
+
+def _parse_census_wide_format(df_raw: pd.DataFrame, filepath: Path, year: int) -> pd.DataFrame:
+    """Parse the 2011–2023 wide crosstab format."""
+    # Find the row with state names (look for "Alabama")
+    state_header_row = None
+    for idx in range(min(10, len(df_raw))):
+        row_vals = df_raw.iloc[idx].astype(str)
+        if row_vals.str.contains("Alabama", case=False).any():
+            state_header_row = idx
+            break
+
+    if state_header_row is None:
+        raise ValueError(f"Could not find state header row in {filepath}")
+
+    state_names_row = df_raw.iloc[state_header_row]
+
+    # Find the data start row (US total row)
+    data_start_row = None
+    for idx in range(state_header_row + 2, min(state_header_row + 10, len(df_raw))):
+        val = str(df_raw.iloc[idx, 0]).strip()
+        if val in ("United States", "United States2"):
+            data_start_row = idx
+            break
+
+    if data_start_row is None:
+        for idx in range(state_header_row + 2, min(state_header_row + 15, len(df_raw))):
+            val = str(df_raw.iloc[idx, 0]).strip()
+            if val in ("Alabama", "Alaska"):
+                data_start_row = idx - 1
+                break
+
+    if data_start_row is None:
+        raise ValueError(f"Could not find data start row in {filepath}")
+
+    # Extract destination state names from the header row
+    dest_states = []
+    dest_col_indices = []
+
+    for col_idx in range(1, len(state_names_row)):
+        val = str(state_names_row.iloc[col_idx]).strip()
+        if val != "nan" and val != "" and val not in ("Estimate", "MOE (±)"):
+            dest_states.append(val)
+            dest_col_indices.append(col_idx)
+
+    # Read data rows
+    records = []
+    for row_idx in range(data_start_row, len(df_raw)):
+        origin = str(df_raw.iloc[row_idx, 0]).strip()
+        if origin == "nan" or origin == "" or origin.startswith("Source:") or origin.startswith("Note"):
+            continue
+        origin = origin.rstrip("0123456789")
+
+        for dest_name, col_idx in zip(dest_states, dest_col_indices):
+            est_val = df_raw.iloc[row_idx, col_idx]
+            moe_val = df_raw.iloc[row_idx, col_idx + 1] if col_idx + 1 < len(df_raw.columns) else None
+
+            try:
+                est = int(float(est_val)) if pd.notna(est_val) and str(est_val).strip() not in ("", "nan", "N", "-") else None
+            except (ValueError, TypeError):
+                est = None
+
+            try:
+                moe = int(float(moe_val)) if pd.notna(moe_val) and str(moe_val).strip() not in ("", "nan", "N", "-") else None
+            except (ValueError, TypeError):
+                moe = None
+
+            if est is not None:
+                records.append({
+                    "origin": origin,
+                    "destination": dest_name.rstrip("0123456789"),
+                    "migrants": est,
+                    "moe": moe,
+                    "year": year,
+                })
+
+    return pd.DataFrame(records)
