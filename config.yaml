@@ -48,6 +48,89 @@ sources:
       - inflow
     filename_pattern: "state{direction}{year}.csv"
 
+  # IRS SOI County-to-County Migration Data (from per-state Excel files)
+  # URL pattern: https://www.irs.gov/pub/irs-soi/{year}{state}.{ext}
+  #   state = 2-letter lowercase abbrev (al, ca, ny, ...); DC exists, PR does not
+  #   ext   = "xls" for 1112-1920, "xlsx" for 2021 onward
+  # Each file has 4 sheets; we use "County Outflow" and "County Inflow".
+  # County sheet columns: origin_state_fips, origin_county_fips, dest_state_fips,
+  #   dest_county_fips, dest_state_abbr, name, n1 (returns), n2 (individuals), AGI ($000s)
+  # NOTE: The state-to-state files (already ingested) carry NO income-bracket
+  #   detail; neither do these. County files add geographic (county) granularity.
+  irs_soi_county_migration:
+    base_url: "https://www.irs.gov/pub/irs-soi"
+    type: xlsx
+    # Start with the most recent year; add more year codes to backfill history.
+    years:
+      - "2223"   # 2022-2023
+    ext_by_year:
+      "1112": xls
+      "1213": xls
+      "1314": xls
+      "1415": xls
+      "1516": xls
+      "1617": xls
+      "1718": xls
+      "1819": xls
+      "1920": xls
+      "2021": xlsx
+      "2122": xlsx
+      "2223": xlsx
+    # 50 states + DC (lowercase 2-letter). PR has no county file.
+    states:
+      - al
+      - ak
+      - az
+      - ar
+      - ca
+      - co
+      - ct
+      - de
+      - dc
+      - fl
+      - ga
+      - hi
+      - id
+      - il
+      - in
+      - ia
+      - ks
+      - ky
+      - la
+      - me
+      - md
+      - ma
+      - mi
+      - mn
+      - ms
+      - mo
+      - mt
+      - ne
+      - nv
+      - nh
+      - nj
+      - nm
+      - ny
+      - nc
+      - nd
+      - oh
+      - ok
+      - or
+      - pa
+      - ri
+      - sc
+      - sd
+      - tn
+      - tx
+      - ut
+      - vt
+      - va
+      - wa
+      - wv
+      - wi
+      - wy
+    filename_pattern: "{year}{state}.{ext}"
+
   # Tax Foundation — state tax burden rankings (supplemental, later phase)
   # tax_foundation:
   #   url: https://taxfoundation.org/data/all/state/...

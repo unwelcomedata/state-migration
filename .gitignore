@@ -64,6 +64,13 @@ env/
 tmp/
 temp/
 
+# ── Scratch SQL ───────────────────────────────────────────────────────────────
+# Personal throwaway queries — never committed. Curated reference queries live
+# in queries/ (e.g. queries/example_queries.sql) and ARE committed.
+scratch.sql
+queries/scratch*.sql
+*.scratch.sql
+
 # ── Artifacts (dev-only docs, not committed) ──────────────────────────────────
 # Project status, plans, analysis findings, data pull guides, social posts, etc.
 # These assist development but are not part of the published dataset.

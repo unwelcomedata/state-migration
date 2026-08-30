@@ -19,7 +19,8 @@ Pillow==12.3.0               # chart rendering (Pillow-based pipeline)
 geopandas==1.0.1             # choropleth maps (optional, only if mapping)
 
 # --- data packaging ---
-openpyxl==3.1.5              # Excel export for sellable datasets
+openpyxl==3.1.5              # Excel export + reading .xlsx (newer ACS files)
+xlrd==2.0.2                  # reading legacy .xls (Census ACS 2011–2019)
 
 # --- config & utilities ---
 pyyaml==6.0.2

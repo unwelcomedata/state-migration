@@ -618,3 +618,185 @@ def _parse_census_wide_format(df_raw: pd.DataFrame, filepath: Path, year: int) -
                 })
 
     return pd.DataFrame(records)
+
+
+# ---------------------------------------------------------------------------
+# IRS SOI County-to-County Migration Data (per-state Excel files)
+# ---------------------------------------------------------------------------
+
+def ingest_irs_county_migration(
+    cfg: dict,
+    years: list[str] | None = None,
+    states: list[str] | None = None,
+    skip_existing: bool = True,
+) -> dict[str, Path]:
+    """Download IRS per-state migration Excel files (one per state per year).
+
+    These files contain county-to-county flows (plus the state-to-state data
+    already available as CSVs). Reads the `irs_soi_county_migration` source
+    block from config.yaml.
+
+    Args:
+        cfg:            Loaded config dict.
+        years:          Override year codes (e.g. ["2223"]). Defaults to config.
+        states:         Override state abbrevs. Defaults to config (50 + DC).
+        skip_existing:  Skip files already in data/raw/.
+
+    Returns:
+        Dict mapping local filename -> Path for all downloaded files.
+    """
+    source = cfg["sources"]["irs_soi_county_migration"]
+    base_url = source["base_url"]
+    year_list = years or source["years"]
+    state_list = states or source["states"]
+    ext_by_year = source["ext_by_year"]
+    pattern = source["filename_pattern"]
+    rate_limit = cfg["settings"].get("rate_limit_seconds", 1.5)
+
+    downloaded: dict[str, Path] = {}
+    total = len(year_list) * len(state_list)
+    count = 0
+
+    for year in year_list:
+        ext = ext_by_year[year]
+        for st in state_list:
+            filename = pattern.format(year=year, state=st, ext=ext)
+            url = f"{base_url}/{filename}"
+            # store with a namespaced local name so it can't collide with CSVs
+            local = f"county_{filename}"
+            dest = raw_path(cfg, local)
+            count += 1
+
+            if skip_existing and dest.exists():
+                print(f"  [{count}/{total}] skip (exists): {local}")
+                downloaded[local] = dest
+                continue
+
+            print(f"  [{count}/{total}] downloading: {local}")
+            try:
+                download_file(url, dest, timeout=90)
+                downloaded[local] = dest
+            except requests.HTTPError as e:
+                print(f"  \u26a0 FAILED {local}: {e}")
+                continue
+
+            if count < total:
+                time.sleep(rate_limit)
+
+    print(f"\n\u2713 Downloaded {len(downloaded)}/{total} county files to {cfg['paths']['data_raw']}/")
+    return downloaded
+
+
+# Column positions in the "County Outflow"/"County Inflow" sheets (0-indexed).
+# Data begins at row 6; rows 0-5 are titles/headers.
+_COUNTY_COLS = [
+    "a_state_fips", "a_county_fips",   # cols 0,1
+    "b_state_fips", "b_county_fips",   # cols 2,3
+    "b_state_abbr", "b_name",          # cols 4,5
+    "n1", "n2", "agi",                 # cols 6,7,8  (returns, individuals, AGI $000s)
+]
+
+
+def parse_irs_county_sheet(filepath: Path, sheet: str, year: int) -> pd.DataFrame:
+    """Parse one County sheet of a per-state IRS file into a long edge frame.
+
+    The "County Outflow" sheet lists, for each origin county in this state,
+    the destination counties people moved TO. "County Inflow" lists, for each
+    destination county in this state, the origin counties people came FROM.
+
+    We normalize both to a consistent (origin, dest) orientation:
+      - Outflow: A = origin, B = destination  -> keep as (A -> B)
+      - Inflow:  A = destination, B = origin   -> flip to (B -> A)
+
+    Args:
+        filepath: Path to the .xls/.xlsx file.
+        sheet:    "County Outflow" or "County Inflow".
+        year:     Migration year label (second year of the pair).
+
+    Returns:
+        Long DataFrame with columns:
+          origin_state_fips, origin_county_fips, dest_state_fips, dest_county_fips,
+          dest_state_abbr, name, n1, n2, agi, year, direction
+        where `direction` records which sheet the row came from ("outflow"/"inflow").
+        Summary/aggregate rows are kept here (raw stage); cleaning drops them.
+    """
+    engine = "openpyxl" if str(filepath).endswith(".xlsx") else "xlrd"
+    raw = pd.read_excel(filepath, sheet_name=sheet, header=None, engine=engine)
+
+    # Data rows start at index 6 (rows 0-5 are titles + column headers).
+    data = raw.iloc[6:, :9].copy()
+    data.columns = _COUNTY_COLS
+    data = data.dropna(subset=["a_state_fips", "b_state_fips"])
+
+    # Coerce numeric measure/code columns
+    for col in ["a_state_fips", "a_county_fips", "b_state_fips", "b_county_fips",
+                "n1", "n2", "agi"]:
+        data[col] = pd.to_numeric(data[col], errors="coerce")
+    data = data.dropna(subset=["a_state_fips", "b_state_fips"])
+
+    is_outflow = "Outflow" in sheet
+    if is_outflow:
+        # A = origin, B = destination
+        o_st, o_cty = data["a_state_fips"], data["a_county_fips"]
+        d_st, d_cty = data["b_state_fips"], data["b_county_fips"]
+    else:
+        # Inflow: A = destination (this state's county), B = origin -> flip
+        o_st, o_cty = data["b_state_fips"], data["b_county_fips"]
+        d_st, d_cty = data["a_state_fips"], data["a_county_fips"]
+
+    out = pd.DataFrame({
+        "origin_state_fips": o_st.astype("Int64").to_numpy(),
+        "origin_county_fips": o_cty.astype("Int64").to_numpy(),
+        "dest_state_fips": d_st.astype("Int64").to_numpy(),
+        "dest_county_fips": d_cty.astype("Int64").to_numpy(),
+        "other_state_abbr": data["b_state_abbr"].to_numpy(),
+        "name": data["b_name"].to_numpy(),
+        "n1": data["n1"].astype("Int64").to_numpy(),
+        "n2": data["n2"].astype("Int64").to_numpy(),
+        "agi": data["agi"].astype("Int64").to_numpy(),
+        "year": year,
+        "direction": "outflow" if is_outflow else "inflow",
+    })
+    return out.reset_index(drop=True)
+
+
+def parse_all_county_files(
+    cfg: dict,
+    years: list[str] | None = None,
+) -> pd.DataFrame:
+    """Parse every downloaded per-state county file into one long edge frame.
+
+    Reads both the County Outflow and County Inflow sheets from each file and
+    concatenates them. Raw stage: summary/aggregate rows are retained and are
+    filtered out later in cleaning.
+
+    Returns:
+        Long DataFrame across all states/years with the columns produced by
+        parse_irs_county_sheet(), plus `source_state` (the file's state abbrev).
+    """
+    source = cfg["sources"]["irs_soi_county_migration"]
+    year_list = years or source["years"]
+    ext_by_year = source["ext_by_year"]
+    state_list = source["states"]
+    raw_dir = Path(cfg["paths"]["data_raw"])
+
+    # YYNN -> second calendar year
+    def _year_label(code: str) -> int:
+        return int("20" + code[2:])
+
+    frames = []
+    for year in year_list:
+        ext = ext_by_year[year]
+        for st in state_list:
+            fp = raw_dir / f"county_{year}{st}.{ext}"
+            if not fp.exists():
+                print(f"  \u26a0 missing (skip): {fp.name}")
+                continue
+            for sheet in ("County Outflow", "County Inflow"):
+                df = parse_irs_county_sheet(fp, sheet, _year_label(year))
+                df["source_state"] = st
+                frames.append(df)
+
+    if not frames:
+        raise FileNotFoundError("No county files found in data/raw/. Run ingest first.")
+    return pd.concat(frames, ignore_index=True)
