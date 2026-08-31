@@ -25,14 +25,27 @@ import pandas as pd
 
 _SOURCES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS _sources (
-    duckdb_table VARCHAR,
-    source_name  VARCHAR,
-    url          VARCHAR,
-    license      VARCHAR,
-    notes        VARCHAR,
-    retrieved    VARCHAR
+    duckdb_table  VARCHAR,
+    source_name   VARCHAR,
+    url           VARCHAR,
+    license       VARCHAR,
+    notes         VARCHAR,
+    retrieved     VARCHAR,
+    methodology   VARCHAR,
+    series_breaks VARCHAR
 )
 """
+
+# Columns that older databases may be missing (added after the original schema).
+_SOURCES_ADDED_COLUMNS = ("methodology", "series_breaks")
+
+
+def _ensure_sources_columns(con: duckdb.DuckDBPyConnection) -> None:
+    """Add later-added _sources columns to pre-existing databases (idempotent)."""
+    existing = {row[1] for row in con.execute("PRAGMA table_info('_sources')").fetchall()}
+    for col in _SOURCES_ADDED_COLUMNS:
+        if col not in existing:
+            con.execute(f"ALTER TABLE _sources ADD COLUMN {col} VARCHAR")
 
 
 def register_source(
@@ -43,6 +56,8 @@ def register_source(
     license: str = "",
     notes: str = "",
     retrieved: str = "",
+    methodology: str = "",
+    series_breaks: str = "",
 ) -> None:
     """Register a data source in the _sources metadata table.
 
@@ -50,13 +65,15 @@ def register_source(
     Replaces any existing entry for the same table name.
 
     Args:
-        con:       Open DuckDB connection.
-        table:     DuckDB table name this source populates.
-        name:      Human-readable source name (e.g., "NHTSA FARS 2024").
-        url:       Direct URL to the data file or page.
-        license:   License string (e.g., "Public domain", "CC-BY 4.0").
-        notes:     Any caveats, methodology notes, or field descriptions.
-        retrieved: Date retrieved as ISO string (YYYY-MM-DD). Defaults to today.
+        con:           Open DuckDB connection.
+        table:         DuckDB table name this source populates.
+        name:          Human-readable source name (e.g., "NHTSA FARS 2024").
+        url:           Direct URL to the data file or page.
+        license:       License string (e.g., "Public domain", "CC-BY 4.0").
+        notes:         Any caveats or field descriptions.
+        retrieved:     Date retrieved as ISO string (YYYY-MM-DD). Defaults to today.
+        methodology:   How the source collects and defines the data.
+        series_breaks: Dates/boundaries across which the numbers are NOT comparable.
     """
     from datetime import date as _date
 
@@ -64,10 +81,14 @@ def register_source(
         retrieved = _date.today().isoformat()
 
     con.execute(_SOURCES_SCHEMA)
+    _ensure_sources_columns(con)
     con.execute("DELETE FROM _sources WHERE duckdb_table = ?", [table])
     con.execute(
-        "INSERT INTO _sources VALUES (?, ?, ?, ?, ?, ?)",
-        [table, name, url, license, notes, retrieved],
+        """INSERT INTO _sources
+           (duckdb_table, source_name, url, license, notes, retrieved,
+            methodology, series_breaks)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        [table, name, url, license, notes, retrieved, methodology, series_breaks],
     )
 
 

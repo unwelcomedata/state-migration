@@ -10,7 +10,10 @@ that someone else could independently locate and verify the original data.
 
 ## Source Template
 
-Copy and fill in for each source:
+Copy and fill in for each source. The **How the source collects the data**,
+**How the source defines the data**, and **Methodology changes / series breaks**
+sections are required — they are what keep our analysis honest and prevent
+apples-to-oranges comparisons.
 
 ### [Source Name]
 - **Publisher:** [Agency, organization, or author]
@@ -19,7 +22,15 @@ Copy and fill in for each source:
 - **License:** [Public domain | CC0 | CC-BY | proprietary | etc.]
 - **Fields used:** [Column names or description of what was extracted]
 - **Coverage:** [Geographic scope, date range, or other relevant bounds]
-- **Notes:** [Any caveats, known issues, or methodology notes]
+- **How the source collects the data:** [Survey / administrative record / registration /
+  model estimate; sampling frame; universe & denominator; who is in/out of the raw collection]
+- **How the source defines the data:** [How the counted thing is defined; judgment calls
+  in what's included/excluded]
+- **Methodology changes / series breaks:** [Dates when definitions/methods changed and
+  which periods are NOT comparable; say so explicitly if the series is consistent]
+- **Known controversies / debates:** [Contested measurement choices worth a caveat; "None
+  known" is valid once checked]
+- **Notes:** [Anything else — quirks, suppression, imputation]
 - **Retrieved:** [YYYY-MM-DD]
 
 ---
@@ -39,14 +50,32 @@ Copy and fill in for each source:
   - `n2` — number of personal exemptions claimed (approximates individuals)
   - `AGI` — total adjusted gross income (in thousands of dollars)
 - **Coverage:** All 50 states + DC, filing years 2011–2012 through 2022–2023 (12 year-pairs)
-- **Notes:**
-  - Data derived from year-to-year address changes on individual income tax returns.
-  - Beginning with 2011–2012, SOI introduced methodology enhancements (new series).
-  - Beginning with 2022–2023, SOI enhanced the matching process (another new series).
-  - Special FIPS codes: 96 = total (US + foreign), 97 = total US, 98 = foreign, 59 = overseas.
-  - Returns filed after late September are excluded; totals may not match other IRS products.
-  - n1/n2 represent tax filers, not total population. A single return may cover 1–4+ people.
-  - AGI is in thousands of dollars.
+- **How the source collects the data:** Administrative, derived from **individual income
+  tax returns**. SOI compares the mailing address on a filer's return in year 1 vs year 2;
+  a change in state = a migrant. The universe is **tax filers and their dependents**, not
+  the full population — non-filers (many low-income, elderly, some students) are invisible.
+  Returns filed after roughly late September are excluded, so totals won't match other IRS
+  products. Not a survey; effectively a near-census of filers who match across years.
+- **How the source defines the data:**
+  - *`n1`* = number of returns filed ≈ **households**.
+  - *`n2`* = number of personal exemptions ≈ **individuals** (a single return can cover 1–4+ people).
+  - *`AGI`* = total adjusted gross income, in **thousands of origin-year dollars**.
+  - A "migrant" is defined by address change between two filing years, not by intent or
+    permanence; a mid-year move is attributed to whichever address was on the returns.
+- **Methodology changes / series breaks:**
+  - **Two known series breaks.** Beginning with **2011–2012** SOI introduced methodology
+    enhancements (a new series vs earlier years), and beginning with **2022–2023** SOI
+    enhanced the year-to-year matching process (another new series). Counts on either side
+    of these boundaries are **not strictly comparable** — flag any multi-year chart that
+    crosses 2011–12 or 2022–23. This project's release uses 2023 (a single year), so it does
+    not cross a break, but a future time series must caveat both.
+  - Late-filed returns are excluded consistently but shift totals slightly vs full-year IRS data.
+- **Known controversies / debates:** IRS migration data is widely used in "people vote with
+  their feet" tax-policy arguments; critics note it captures *filers* (skewing toward higher
+  incomes and away from non-filers) and that AGI is income at origin, not a measure of the
+  mover's later earnings. Attribute carefully.
+- **Notes:** Special FIPS codes: 96 = total (US + foreign), 97 = total US, 98 = foreign,
+  59 = overseas.
 - **Retrieved:** 2026-08-25
 
 ### IRS Statistics of Income (SOI) — County-to-County Migration Data
@@ -64,6 +93,21 @@ Copy and fill in for each source:
   non-migrant row (residents who filed from the same county both years) as
   `AGI * 1000 / returns`. Counties are flagged **above/below the national median**
   of this proxy (one vote per county, ~3,140 counties).
+- **How the source collects the data:** Same administrative tax-return basis as the state
+  file (address change between filing years), tabulated at county level. Universe = tax
+  filers + dependents who match across years; non-filers excluded.
+- **How the source defines the data:** `n1` ≈ households, `n2` ≈ individuals, `AGI` in
+  thousands of dollars — identical definitions to the state file. **Income class describes
+  the county (place), not the income of the people in each flow** — it is derived from each
+  county's non-migrant AGI-per-return, then flagged above/below the national median. IRS
+  does not publish migration by income bracket, so "who is rich/poor" here is a property of
+  *where they live*, not of the movers.
+- **Methodology changes / series breaks:** Same 2011–12 and 2022–23 SOI series breaks as the
+  state file. File format also changed (`.xls` for 2011–2020 pairs, `.xlsx` from 2020–2021),
+  a cosmetic break only. Currently only 2022–2023 is ingested, so no cross-break comparison
+  is made.
+- **Known controversies / debates:** The large, non-random suppression (below) is the main
+  caveat; county figures are best for the *shape* of movement, not exact totals.
 - **Notes / caveats:**
   - **Disclosure suppression is large and non-random.** The IRS suppresses small
     county-to-county flows (roughly fewer than 10 returns) and bundles them into
@@ -71,12 +115,9 @@ Copy and fill in for each source:
     from the county edge table. As a result, **identified county-to-county edges
     account for only ~60% of domestic county movement nationally** (and ~80% of a
     large directed state pair like CA→TX). County totals therefore **undercount**
-    true movement, and the undercount concentrates in *small* flows. Use county
-    data for the *shape* of movement between identified places, not exact totals.
+    true movement, and the undercount concentrates in *small* flows.
   - Non-migrant rows are used only to derive the income proxy; they are stored in
     `county_nonmigrants`, not in the flow edges.
-  - Income class describes the **county** (place), not the income of the specific
-    people in each flow. IRS does not publish migration by income bracket.
   - Same FIPS/summary-code conventions as the state files (96/97/98 summaries,
     57 foreign, dropped from edges).
 - **Retrieved:** 2026-08-30
@@ -92,13 +133,26 @@ Copy and fill in for each source:
   - Margin of error (MOE ±, 90% confidence)
   - Includes: same state, different state, and abroad
 - **Coverage:** All 50 states + DC + Puerto Rico, ACS 1-year data, 2011–2024 (no 2020)
-- **Notes:**
-  - Based on survey question "Where did you live 1 year ago?"
-  - Captures all residents regardless of tax filing status (unlike IRS data)
-  - Subject to sampling variability — MOE reflects ~3.5M household sample
-  - 2020 not released due to COVID-19 response rate issues
-  - 2022 Connecticut data has known processing error (corrected in 2023)
-  - Universe: population 1 year and over
+- **How the source collects the data:** A **survey** (American Community Survey, ~3.5M
+  household sample per year), not administrative records. Migration comes from the question
+  "Where did you live 1 year ago?" Because it's a sample, every estimate carries a **margin
+  of error (MOE, 90% confidence)**; small flows are statistically unreliable.
+- **How the source defines the data:** *Migrant* = a person (universe: population age 1+)
+  whose residence one year ago differs from their current residence. Unlike IRS, this
+  **captures everyone regardless of tax-filing status** — it counts people, not returns, and
+  includes non-filers. "People-weighted" vs the IRS "income-weighted" view.
+- **Methodology changes / series breaks:**
+  - **2020 1-year ACS was not released** (COVID-19 response-rate problems) — there is a
+    literal gap; never interpolate across it as if continuous.
+  - **2022 Connecticut** has a known processing error (corrected in 2023) — treat 2022 CT
+    flows as suspect.
+  - ACS methodology is otherwise consistent, but sample redesigns and control-total updates
+    can nudge estimates; compare within the 1-year series only (never mix 1-year and 5-year).
+- **Known controversies / debates:** IRS (filers, income-weighted) and ACS (people-weighted
+  survey) measure different universes and will not match exactly — this project reports both
+  side by side rather than reconciling them to one number (validated at Pearson r≈0.86).
+- **Notes:** MOE reflects sampling uncertainty; a large MOE relative to the estimate means
+  the flow is unreliable.
 - **Retrieved:** 2026-08-25
 
 ---
@@ -174,6 +228,17 @@ Definitions for the fields used across the raw sources and the prepared
 - All source files are saved verbatim to `data/raw/` and never modified.
 - Discrepancies between sources should be noted here and resolved explicitly.
 
+### Series breaks & comparability (read before any multi-year comparison)
+
+- **IRS SOI: breaks at 2011–12 and 2022–23.** Methodology enhancement (2011–12) and an
+  improved matching process (2022–23) mean counts across those boundaries are not strictly
+  comparable. A time-series chart spanning either must carry a visible caveat.
+- **ACS: 2020 is missing** (no 1-year release) and **2022 Connecticut is erroneous**
+  (fixed in 2023). Do not interpolate across the 2020 gap.
+- **IRS vs ACS measure different universes** (tax filers/income-weighted vs all residents/
+  people-weighted). They correlate strongly (r≈0.86) but must not be treated as the same
+  number — report the method next to any figure.
+
 ---
 
 ## Source Provenance in DuckDB
@@ -182,5 +247,10 @@ Every table in `data/project.duckdb` has a corresponding entry in the
 `_sources` metadata table:
 
 ```sql
-SELECT * FROM _sources;
+SELECT duckdb_table, source_name, methodology, series_breaks FROM _sources;
 ```
+
+Alongside `source_name`, `url`, `license`, `notes`, `retrieved`, the table carries
+**`methodology`** (how the source collects/defines the data) and **`series_breaks`**
+(the IRS 2011–12 / 2022–23 breaks and the ACS 2020 gap), so provenance travels with the
+data. Keep these in sync with the per-source sections above.
