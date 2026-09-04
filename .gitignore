@@ -30,11 +30,14 @@ export/*
 
 # ── Output images ─────────────────────────────────────────────────────────────
 # Social chart PNGs can reveal your data before you're ready to publish.
-outputs/*
-!outputs/.gitkeep
-!outputs/social/
-outputs/social/*
-!outputs/social/.gitkeep
+outputs/
+
+# ── Release branch: publish curated charts + STATE dataset (force-added) ──────
+# docs/ holds the published chart PNGs; the STATE export CSV+codebook are the
+# public dataset. County data is held for a later (phase-2) release and is NOT
+# published here. Intentionally tracked on the release branch only.
+!docs/
+notebooks/
 
 # ── Environment & secrets ─────────────────────────────────────────────────────
 .env
