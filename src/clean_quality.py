@@ -23,6 +23,7 @@ import pandas as pd
 # Source provenance (_sources metadata table)
 # ---------------------------------------------------------------------------
 
+# Canonical _sources schema, used when a database has no _sources table yet.
 _SOURCES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS _sources (
     duckdb_table  VARCHAR,
@@ -39,10 +40,33 @@ CREATE TABLE IF NOT EXISTS _sources (
 # Columns that older databases may be missing (added after the original schema).
 _SOURCES_ADDED_COLUMNS = ("methodology", "series_breaks")
 
+# Some projects created _sources in their ingest notebooks with an alternative
+# column layout (table_name/source_url/description/retrieved_date/row_count)
+# instead of the canonical one (duckdb_table/url/notes/retrieved). register_source
+# must not break those databases, so it detects the existing layout and maps its
+# logical fields onto whatever key/url/notes/date columns are actually present.
+_SOURCES_KEY_ALIASES = ("duckdb_table", "table_name")
+_SOURCES_URL_ALIASES = ("url", "source_url")
+_SOURCES_NOTES_ALIASES = ("notes", "description")
+_SOURCES_DATE_ALIASES = ("retrieved", "retrieved_date")
+
+
+def _sources_columns(con: duckdb.DuckDBPyConnection) -> list[str]:
+    """Return the column names of the existing _sources table (in order)."""
+    return [row[1] for row in con.execute("PRAGMA table_info('_sources')").fetchall()]
+
+
+def _first_present(candidates: tuple[str, ...], columns: set[str]) -> str | None:
+    """Return the first candidate column name that exists in the table."""
+    for c in candidates:
+        if c in columns:
+            return c
+    return None
+
 
 def _ensure_sources_columns(con: duckdb.DuckDBPyConnection) -> None:
     """Add later-added _sources columns to pre-existing databases (idempotent)."""
-    existing = {row[1] for row in con.execute("PRAGMA table_info('_sources')").fetchall()}
+    existing = set(_sources_columns(con))
     for col in _SOURCES_ADDED_COLUMNS:
         if col not in existing:
             con.execute(f"ALTER TABLE _sources ADD COLUMN {col} VARCHAR")
@@ -64,6 +88,14 @@ def register_source(
     Call this after loading a new table into DuckDB to maintain full provenance.
     Replaces any existing entry for the same table name.
 
+    Schema-adaptive: if the database already has a ``_sources`` table (possibly
+    with the notebook-era layout — table_name/source_url/description/
+    retrieved_date/row_count), the logical fields below are written to whichever
+    equivalent columns actually exist, and any missing methodology/series_breaks
+    columns are added. Only when no ``_sources`` table exists is the canonical
+    schema created. This keeps re-ingest consistent across every project without
+    rewriting historical rows.
+
     Args:
         con:           Open DuckDB connection.
         table:         DuckDB table name this source populates.
@@ -80,22 +112,51 @@ def register_source(
     if not retrieved:
         retrieved = _date.today().isoformat()
 
-    con.execute(_SOURCES_SCHEMA)
+    # Create the canonical schema only if there is no _sources table at all.
+    if not con.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_name = '_sources'"
+    ).fetchall():
+        con.execute(_SOURCES_SCHEMA)
     _ensure_sources_columns(con)
-    con.execute("DELETE FROM _sources WHERE duckdb_table = ?", [table])
+
+    columns = set(_sources_columns(con))
+    key_col = _first_present(_SOURCES_KEY_ALIASES, columns) or "duckdb_table"
+    url_col = _first_present(_SOURCES_URL_ALIASES, columns)
+    notes_col = _first_present(_SOURCES_NOTES_ALIASES, columns)
+    date_col = _first_present(_SOURCES_DATE_ALIASES, columns)
+
+    # Build the row from whatever columns this database actually has.
+    values: dict[str, Any] = {key_col: table, "source_name": name}
+    if url_col:
+        values[url_col] = url
+    if notes_col:
+        values[notes_col] = notes
+    if date_col:
+        values[date_col] = retrieved
+    if "license" in columns:
+        values["license"] = license
+    if "methodology" in columns:
+        values["methodology"] = methodology
+    if "series_breaks" in columns:
+        values["series_breaks"] = series_breaks
+
+    con.execute(f"DELETE FROM _sources WHERE {key_col} = ?", [table])
+    cols_sql = ", ".join(values.keys())
+    placeholders = ", ".join("?" for _ in values)
     con.execute(
-        """INSERT INTO _sources
-           (duckdb_table, source_name, url, license, notes, retrieved,
-            methodology, series_breaks)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        [table, name, url, license, notes, retrieved, methodology, series_breaks],
+        f"INSERT INTO _sources ({cols_sql}) VALUES ({placeholders})",
+        list(values.values()),
     )
 
 
 def get_sources(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """Return the full _sources provenance table as a DataFrame."""
-    con.execute(_SOURCES_SCHEMA)
-    return con.execute("SELECT * FROM _sources ORDER BY duckdb_table").df()
+    if not con.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_name = '_sources'"
+    ).fetchall():
+        con.execute(_SOURCES_SCHEMA)
+    key_col = _first_present(_SOURCES_KEY_ALIASES, set(_sources_columns(con))) or "duckdb_table"
+    return con.execute(f"SELECT * FROM _sources ORDER BY {key_col}").df()
 
 
 # ---------------------------------------------------------------------------
