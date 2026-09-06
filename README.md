@@ -105,15 +105,27 @@ The richer packaging (Excel, Parquet) and the full pipeline code are in the repo
 
 ## Reproduce it
 
-**This one is not a one-command rebuild.** The IRS SOI files (state CSVs) and the
-Census ACS migration tables (Excel) are downloaded from the URLs in
-[SOURCES.md](SOURCES.md) into `data/raw/`. The ingest → clean → prepare pipeline
-then builds the DuckDB tables and the export; the reusable logic lives in
-[`src/`](src/) (`ingest.py`, `clean_quality.py`, `prepare.py`, `viz_social.py`).
+The published dataset rebuilds from raw sources with one command:
+
+```bash
+python scripts/reproduce.py
+```
+
+It runs the full pipeline — **ingest → load → clean → prepare** — using the same
+logic the project uses throughout (in [`src/`](src/): `ingest.py`,
+`clean_quality.py`, `prepare.py`). On the first run it downloads the IRS SOI state
+CSVs and the Census ACS migration tables (the URLs are in [SOURCES.md](SOURCES.md))
+into `data/raw/`; after that it runs offline. The output CSV is byte-for-byte
+identical to the published `export/state_migration_flows_v1.csv`. See
+[`scripts/README.md`](scripts/README.md) for options and the stage-by-stage
+breakdown.
 
 For exploring the built database directly, [`queries/example_queries.sql`](queries/example_queries.sql)
 has read-only reference queries (table list, provenance, top net gainers/losers,
-income-per-migrant) that run against the project DuckDB file.
+income-per-migrant).
+
+*(This reproduces the state-level release. The county-to-county layer is validated
+but held for a later phase, so it isn't part of the entrypoint.)*
 
 ---
 
