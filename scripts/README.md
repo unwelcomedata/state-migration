@@ -1,46 +1,45 @@
-# Scripts — Pipeline Run Order
+# Scripts — reproducing the published dataset
 
-Full rebuild from raw data to export. Each step depends on the previous.
+The published release (`export/state_migration_flows_v1.*`) is rebuildable from
+raw sources with a single command.
 
-## Prerequisites
-
-- Python 3.11+ with packages from `requirements.txt`
-- `data/raw/` populated with source files (see SOURCES.md)
-- Playwright + Chromium installed if any source uses `js_render: true`
-
-## Run order
+## `reproduce.py` — raw → export
 
 ```bash
-# 1. Ingestion — fetch all sources → data/raw/ → DuckDB tables
-python scripts/ingest_all.py
-
-# 2. Cleaning — standardize raw tables → data/interim/ (Parquet)
-python scripts/clean_all.py
-
-# 3. Export — join clean tables → export/ (CSV, Excel, Parquet + codebook)
-python scripts/prepare_export.py
+python scripts/reproduce.py
 ```
 
-## Conventions
+Runs the full state-level pipeline end to end, using the same logic the project
+notebooks use (the reusable code lives in [`../src/`](../src)):
 
-- **One script per pipeline stage.** Don't accumulate one-off scripts — if logic
-  is absorbed into a main script, delete the original.
-- **Only the current export version lives in `export/`.** Tag old versions in git.
-- **Interim parquets must 1:1 match their DuckDB table names.** When you rename a
-  table, rename or delete the corresponding parquet.
-- **Document run order here** whenever you add a new script.
+| Stage | What it does | Output |
+|-------|--------------|--------|
+| 1. Ingest | Ensures the raw IRS SOI state-to-state CSVs and Census ACS Excel files are in `data/raw/` (downloads any that are missing) | `data/raw/` |
+| 2. Load | Loads the raw files into DuckDB (`stateoutflow{YYNN}` / `stateinflow{YYNN}`, `census_acs_migration`) | DuckDB raw tables |
+| 3. Clean | Builds the directed-edge staging tables (`state_ref`, `irs_edges`, `acs_edges`, `nonmigrants`) | DuckDB staging tables |
+| 4. Prepare | Merges IRS + ACS into `migration_flows`, adds the ACS reliability columns, and packages the export | `export/state_migration_flows_v1.*` + codebook |
 
-## Script descriptions
+The output CSV is byte-for-byte identical to the published dataset.
 
-| Script | Purpose | Inputs | Outputs |
-|--------|---------|--------|---------|
-| `ingest_all.py` | Fetch and load all data sources | `config.yaml`, web | DuckDB tables, `data/raw/` |
-| `clean_all.py` | Standardize and quality-check | DuckDB raw tables | `data/interim/*.parquet` |
-| `prepare_export.py` | Build final joined dataset | DuckDB clean tables | `export/*` |
+### Prerequisites
 
-## Adding a new script
+- Python 3.11+ with the packages in [`../requirements.txt`](../requirements.txt).
+- Network access on the **first** run (to download raw files). Once `data/raw/`
+  is populated, subsequent runs are fully offline.
+- Source URLs, definitions, and methodology/series-break notes are in
+  [`../SOURCES.md`](../SOURCES.md).
 
-1. Add it to the run-order table above
-2. Ensure it reads from DuckDB (not from other scripts' intermediate files)
-3. Ensure it writes its output to DuckDB and/or interim parquet
-4. Update the `_sources` metadata table if ingesting new data
+### Options
+
+```bash
+python scripts/reproduce.py --no-download           # fail (don't fetch) if raw files are missing
+python scripts/reproduce.py --formats csv           # write only the CSV (+ codebook)
+python scripts/reproduce.py --db /tmp/x.duckdb \
+       --export-dir /tmp/exp                         # build into a scratch location (leaves the project DB/export untouched)
+```
+
+## Scope
+
+This entrypoint reproduces the **state-level** release, which is what's published.
+The county-to-county layer is ingested and validated but held for a later phase,
+so it is intentionally not part of `reproduce.py`.
