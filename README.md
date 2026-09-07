@@ -1,4 +1,4 @@
-**[@unwelcomedata](https://unwelcomedata.github.io/state-migration/)** · data from public sources
+**[@unwelcomedata](https://github.com/unwelcomedata)** · data from public sources
 
 # Where Americans moved between states — and the income that moved with them
 
