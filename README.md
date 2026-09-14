@@ -25,30 +25,37 @@ they answer different questions and shouldn't be blended into one number.
 
 ## The charts
 
+_All figures are for **2023**, from IRS tax-return data. "Net" = inflow-file
+arrivals minus outflow-file departures. Click any chart to open it full size._
+
 **The 5 states gaining the most people — and the 5 losing the most.** Net
-migration, 2023.
+migration in 2023 (arrivals minus departures), trimmed to the 10 extremes.
 
-![Net migration by state, 2023](docs/01_net_migration_by_state.png)
+[![Net migration by state, 2023](docs/01_net_migration_by_state.png)](docs/01_net_migration_by_state.png)
 
-**The biggest one-way moves between states.** The largest *net* directed pairs —
-where one state consistently drained into another.
+**The biggest one-way moves between states, 2023.** The largest *net* directed
+pairs — the red state lost people to the blue state.
 
-![Biggest one-way moves between states, 2023](docs/02_biggest_one_way_moves.png)
+[![Biggest one-way moves between states, 2023](docs/02_biggest_one_way_moves.png)](docs/02_biggest_one_way_moves.png)
 
 **The states gaining — and losing — the most income to migration.** Net adjusted
-gross income (IRS), 2023.
+gross income moved with migrants in 2023, in **billions of dollars** (IRS AGI,
+origin-year dollars).
 
-![Net income by state from migration, 2023](docs/03_net_income_by_state.png)
+[![Net income by state from migration, 2023](docs/03_net_income_by_state.png)](docs/03_net_income_by_state.png)
 
-**The average income of the people each state gains and loses.** Net AGI divided
-by net migrants — a per-person read on who's arriving vs. leaving.
+**The average income of the people each state gains and loses.** Net AGI per net
+migrant in 2023, in **thousands of dollars per person** — right: income arriving
+per net newcomer; left: income leaving per net departure. States with net
+migration of at least 20,000 people.
 
-![Income per net migrant by state](docs/04_income_per_migrant.png)
+[![Income per net migrant by state](docs/04_income_per_migrant.png)](docs/04_income_per_migrant.png)
 
-**Most interstate moves cancel each other out.** Net migration against gross
-churn, showing how little of the movement nets out.
+**Most interstate moves cancel each other out.** Each dot is a state pair, net
+migration against gross (total) churn. A pair can never have more net than total
+migration, so the diagonal is a ceiling almost no pair reaches.
 
-![Net vs gross interstate migration](docs/05_net_vs_gross.png)
+[![Net vs gross interstate migration](docs/05_net_vs_gross.png)](docs/05_net_vs_gross.png)
 
 ---
 

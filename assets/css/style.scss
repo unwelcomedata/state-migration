@@ -1,0 +1,29 @@
+---
+---
+
+@import "{{ site.theme }}";
+
+/* ------------------------------------------------------------------ *
+ * @unwelcomedata — shared Cayman overrides (standard across projects)
+ *   1. Widen the content column so charts read without zooming. Stock
+ *      Cayman caps at 64rem with 6rem side padding (~832px usable on
+ *      desktop); we widen it and trim padding at the large breakpoint.
+ *      Mobile/tablet breakpoints are left as the theme ships them.
+ *   2. Let a chart image act as a click-to-open link to the full-res PNG.
+ * ------------------------------------------------------------------ */
+
+@media screen and (min-width: 64em) {
+  .main-content {
+    max-width: 80rem;      /* was 64rem (~1024px) -> ~1280px */
+    padding: 2rem 4rem;    /* was 2rem 6rem -> reclaim 2rem each side */
+  }
+}
+
+.main-content img {
+  max-width: 100%;
+  height: auto;
+}
+.main-content a > img {
+  display: block;
+  margin: 0 auto;
+}
