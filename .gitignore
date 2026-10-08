@@ -76,3 +76,6 @@ queries/scratch*.sql
 # These assist development but are not part of the published dataset.
 artifacts/
 !artifacts/.gitkeep
+
+# ── Workflow scratch (agent task plans / reviews, not committed) ──────────────
+.agents/
