@@ -57,6 +57,32 @@ migration, so the diagonal is a ceiling almost no pair reaches.
 
 [![Net vs gross interstate migration](docs/05_net_vs_gross.png)](docs/05_net_vs_gross.png)
 
+### Down to the county
+
+The same IRS tax-return data also tracks moves **county-to-county**. These two
+charts are **2023**, use IRS **county-to-county identified flows only** (small
+flows are suppressed by the IRS, so counties undercount by design), and net =
+inflow-file arrivals minus outflow-file departures.
+
+**County migration — the biggest gainers and losers.** Net moves of people
+between counties in 2023 (top 5 gaining counties, bottom 5 losing). The counties
+losing the most are big urban cores — **Los Angeles (−81,742)**, Cook/Chicago,
+Queens, Kings/Brooklyn, Miami-Dade — and the ones gaining the most are sunbelt
+suburbs in Florida and Texas (Polk, Pasco, Collin, Montgomery, Williamson).
+
+[![County net migration — biggest gainers and losers, 2023](docs/06_county_net_migration.png)](docs/06_county_net_migration.png)
+
+**Los Angeles County's two migrations.** LA is the biggest single loser, so it
+gets a closer look — the top 10 destination counties, two ways. **Left: by number
+of people** — the volume goes to LA's own cheaper inland ring (San Bernardino
+34,872, Orange, Riverside). **Right: by AGI per person** (limited to destinations
+with at least 500 movers, to exclude tiny-sample resort counties) — the highest
+earners leave for other elite metros (Manhattan ≈ $186,987 of AGI per person,
+Miami-Dade, Santa Barbara, San Francisco). The headcount and the money go to
+different places.
+
+[![Los Angeles County's two migrations, 2023 — by people and by AGI per person](docs/07_la_county_detail.png)](docs/07_la_county_detail.png)
+
 ---
 
 ## How it was measured
@@ -87,9 +113,13 @@ the dataset reports both columns and never reconciles them to a single figure.
   single year. IRS has methodology **series breaks at 2011–12 and 2022–23**, and
   ACS **has no 2020 release** and a known **2022 Connecticut** error — so any
   multi-year comparison must carry those caveats. 2023 alone crosses none of them.
-- **County-level migration is not part of this release.** It's ingested and
-  validated but held for a later phase (county flows undercount by design — small
-  flows are suppressed).
+- **The county charts are a single-year (2023) snapshot of identified flows.**
+  IRS suppresses small county-to-county flows, so the identified edges undercount
+  real movement (nationally they capture a majority of it, not all), and a
+  county's "net" is the sum of its identified edges only. The county income class
+  used elsewhere in the data describes the *place* (a county's resident
+  AGI-per-return vs the national median), **not** the income of the individual
+  movers.
 
 Per-source collection methods, definitions, series breaks, and the full column
 glossary are in [SOURCES.md](SOURCES.md).
@@ -105,6 +135,12 @@ The published dataset is in [`export/`](export/):
   side by side, 2011–2024.
 - `state_migration_flows_v1_codebook.md` — a plain-English description of every
   column.
+- `county_migration_flows_v1.csv` — directed **county-to-county** flows for 2023,
+  each endpoint tagged with its income class (above/below the national median
+  county AGI-per-return), with the IRS returns / individuals / AGI measures. This
+  is the data behind the two county charts above.
+- `county_migration_flows_v1_codebook.md` — a plain-English description of every
+  county column.
 
 The richer packaging (Excel, Parquet) and the full pipeline code are in the repo.
 
@@ -131,8 +167,9 @@ For exploring the built database directly, [`queries/example_queries.sql`](queri
 has read-only reference queries (table list, provenance, top net gainers/losers,
 income-per-migrant).
 
-*(This reproduces the state-level release. The county-to-county layer is validated
-but held for a later phase, so it isn't part of the entrypoint.)*
+*(This reproduces the state-level flows dataset. The county-to-county layer is
+built through the same `src/` pipeline from the IRS county files; the published
+`county_migration_flows_v1.csv` is included in [`export/`](export/).)*
 
 ---
 
@@ -152,8 +189,9 @@ both U.S. government works in the public domain. No crowd-edited sources are use
   the COVID bump?
 - **Stayers vs. leavers income**: do the people leaving a state earn more or less
   than those who stay?
-- The **county layer** (LA County outlier, affordability migration to below-median
-  counties, a metro-level view) — held for a phase-2 release.
+- A **wider county cut** — the two county charts here are a single 2023 snapshot
+  for a handful of counties; a multi-county, multi-year county view (metro-level
+  rollups, the affordability-migration pattern over time) is the natural next step.
 
 ---
 
