@@ -75,6 +75,60 @@ def main() -> int:
     check("interstate net flows roughly balance (|sum| < 50k)",
           abs(int(total_net)) < 50000, f"sum of net = {int(total_net):,}")
 
+    # ── County charts (phase-2): headline facts from prepared tables ──────
+    have = {r[0] for r in con.execute(
+        "SELECT table_name FROM information_schema.tables").fetchall()}
+    if "chart_county_net" in have:
+        # Chart 06: biggest county net loser is Los Angeles County (CA)
+        c_loser = con.execute(
+            "SELECT label, net_people FROM chart_county_net "
+            "ORDER BY net_people ASC LIMIT 1").fetchone()
+        check("county top net loser is Los Angeles County (CA)",
+              c_loser[0] == "Los Angeles County (CA)", f"got {c_loser[0]!r}")
+        check("LA County net ~-81,742",
+              abs(int(c_loser[1]) + 81742) < 50, f"got {int(c_loser[1]):,}")
+        c_gainer = con.execute(
+            "SELECT label, net_people FROM chart_county_net "
+            "ORDER BY net_people DESC LIMIT 1").fetchone()
+        check("county top net gainer is Polk County (FL)",
+              c_gainer[0] == "Polk County (FL)", f"got {c_gainer[0]!r}")
+        check("Polk County net ~+19,407",
+              abs(int(c_gainer[1]) - 19407) < 50, f"got {int(c_gainer[1]):,}")
+        check("chart_county_net has 3143 county rows",
+              con.execute("SELECT COUNT(*) FROM chart_county_net").fetchone()[0] == 3143)
+    else:
+        check("chart_county_net prepared table present", False,
+              "run 03-prepare to build the county chart tables")
+
+    if "chart_la_destinations" in have:
+        # Chart 07 left panel: LA's top destination by people is San Bernardino
+        la_ppl = con.execute(
+            "SELECT dest_label, people FROM chart_la_destinations "
+            "ORDER BY people DESC LIMIT 1").fetchone()
+        check("LA top destination by people is San Bernardino County (CA)",
+              la_ppl[0] == "San Bernardino County (CA)", f"got {la_ppl[0]!r}")
+        check("LA->San Bernardino ~34,872",
+              abs(int(la_ppl[1]) - 34872) < 20, f"got {int(la_ppl[1]):,}")
+        # Chart 07 right panel: top AGI-per-person among >=500-mover destinations
+        la_agi = con.execute(
+            "SELECT dest_label, agi_per_person FROM chart_la_destinations "
+            "WHERE people >= 500 ORDER BY agi_per_person DESC LIMIT 1").fetchone()
+        check("LA top AGI/person dest (>=500 movers) is New York County (NY)",
+              la_agi[0] == "New York County (NY)", f"got {la_agi[0]!r}")
+        check("New York County AGI/person ~$186,987",
+              abs(int(la_agi[1]) - 186987) < 100, f"got ${int(la_agi[1]):,}")
+        # the >=500 floor must exclude tiny-sample resort counties
+        resort = con.execute(
+            "SELECT COUNT(*) FROM chart_la_destinations "
+            "WHERE people >= 500 AND dest_label IN "
+            "('Pitkin County (CO)','Teton County (WY)','Summit County (UT)',"
+            "'Blaine County (ID)')").fetchone()[0]
+        check("resort counties excluded by the >=500-mover floor", resort == 0,
+              f"{resort} resort county(ies) still above the floor")
+    else:
+        check("chart_la_destinations prepared table present", False,
+              "run 03-prepare to build the LA detail table")
+
     con.close()
 
     # ── Social vs web chart parity (when rendered outputs are present) ────
