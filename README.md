@@ -7,6 +7,10 @@ State-to-state migration for 2023, measured two ways at once: **who** moved
 tax-return data, income-weighted). Putting both next to each other is the point —
 they answer different questions and shouldn't be blended into one number.
 
+[![State migration — infographic](docs/infographic_state_migration.png)](docs/infographic_state_migration.png)
+
+---
+
 **The findings that held up:**
 
 - **Florida and Texas gained the most people; California and New York lost the
